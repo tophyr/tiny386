@@ -2856,16 +2856,30 @@ static bool call_isr(CPUI386 *cpu, int no, bool pusherr, int ext);
 		} \
 	}
 
-#define STOSb() STOS_helper(8)
-#define LODSb() LODS_helper(8)
-#define SCASb() SCAS_helper(8)
-#define MOVSb() MOVS_helper(8)
-#define CMPSb() CMPS_helper(8)
-#define STOS() if (opsz16) { STOS_helper(16) } else { STOS_helper(32) }
-#define LODS() if (opsz16) { LODS_helper(16) } else { LODS_helper(32) }
-#define SCAS() if (opsz16) { SCAS_helper(16) } else { SCAS_helper(32) }
-#define MOVS() if (opsz16) { MOVS_helper(16) } else { MOVS_helper(32) }
-#define CMPS() if (opsz16) { CMPS_helper(16) } else { CMPS_helper(32) }
+/* REP string instructions: the iterations an instruction ran, from the
+ * change in (E)CX, count as steps and in cpu->cycle. A REP still runs to the
+ * end, and cpu_exec1 stops after it once the steps are used up.
+ */
+#define REP_COUNTED(...) { \
+	uword rep_cx = rep ? (adsz16 ? lreg16(1) : lreg32(1)) : 0; \
+	__VA_ARGS__ \
+	if (rep) { \
+		uword rep_n = rep_cx - (adsz16 ? lreg16(1) : lreg32(1)); \
+		cpu->cycle += rep_n; \
+		stepcount -= rep_n; \
+	} \
+}
+
+#define STOSb() REP_COUNTED(STOS_helper(8))
+#define LODSb() REP_COUNTED(LODS_helper(8))
+#define SCASb() REP_COUNTED(SCAS_helper(8))
+#define MOVSb() REP_COUNTED(MOVS_helper(8))
+#define CMPSb() REP_COUNTED(CMPS_helper(8))
+#define STOS() REP_COUNTED(if (opsz16) { STOS_helper(16) } else { STOS_helper(32) })
+#define LODS() REP_COUNTED(if (opsz16) { LODS_helper(16) } else { LODS_helper(32) })
+#define SCAS() REP_COUNTED(if (opsz16) { SCAS_helper(16) } else { SCAS_helper(32) })
+#define MOVS() REP_COUNTED(if (opsz16) { MOVS_helper(16) } else { MOVS_helper(32) })
+#define CMPS() REP_COUNTED(if (opsz16) { CMPS_helper(16) } else { CMPS_helper(32) })
 
 #define indxstdi(BIT, ABIT) \
 	TRY(translate ## BIT(cpu, &meml, 2, SEG_ES, lreg ## ABIT(7))); \
@@ -2927,8 +2941,8 @@ static bool call_isr(CPUI386 *cpu, int no, bool pusherr, int ext);
 		if (adsz16) { INS_helper2(BIT, 16) } else { INS_helper2(BIT, 32) } \
 	}
 
-#define INSb() INS_helper(8)
-#define INS() if (opsz16) { INS_helper(16) } else { INS_helper(32) }
+#define INSb() REP_COUNTED(INS_helper(8))
+#define INS() REP_COUNTED(if (opsz16) { INS_helper(16) } else { INS_helper(32) })
 
 #define ldsioutdx(BIT, ABIT) \
 	TRY(translate ## BIT(cpu, &meml, 1, curr_seg, lreg ## ABIT(6))); \
@@ -2995,8 +3009,8 @@ static bool call_isr(CPUI386 *cpu, int no, bool pusherr, int ext);
 		} \
 	}
 
-#define OUTSb() OUTS_helper(8)
-#define OUTS() if (opsz16) { OUTS_helper(16) } else { OUTS_helper(32) }
+#define OUTSb() REP_COUNTED(OUTS_helper(8))
+#define OUTS() REP_COUNTED(if (opsz16) { OUTS_helper(16) } else { OUTS_helper(32) })
 
 #define JCXZb(i, li, _) \
 	sword d = sext8(li(i)); \
